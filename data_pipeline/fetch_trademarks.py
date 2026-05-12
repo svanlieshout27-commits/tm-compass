@@ -1,27 +1,23 @@
 """
-Seed corpus generator for TM Compass.
+Seed corpus generator for TM Compass — v2 (Weekend 4 clean data).
 
 Generates ~3,500-4,500 realistic EU trademark filings based on real brands
-across Nice classes 9, 25, 35, 41. Each brand gets 5-15 variant filings
-that mirror how real portfolios look:
-  - Base word marks plus sub-brand variants ("NIKE AIR", "NIKE PRO")
-  - Famous taglines for marquee brands ("JUST DO IT", "THINK DIFFERENT")
-  - Cross-class filings (one owner files across multiple Nice classes)
-  - Mix of mark types (word, figurative, combined, 3D, sound)
-  - Realistic goods/services descriptions drawn from Nice class verbiage
-  - Application dates spread 2018-2025; status weighted toward Registered
+across Nice classes 9, 25, 35, 41. Every brand has a correct, real-world
+owner so applicant-name queries ("What has Nike filed?") always work.
 
-Weekend 1 unblock — TMview's public API is currently returning 500s.
-The pipeline is API-agnostic; swap in EUIPO open-data bulk download later.
+Changes from v1:
+  - All brands in BRAND_OWNERS (no random fallback owners)
+  - source_url added pointing to real EUIPO eSearch page for each mark
 """
 import json
 import random
+import urllib.parse
 from datetime import date, timedelta
 from pathlib import Path
 
 random.seed(42)
 
-OUT = Path(__file__).parent.parent / "data" / "raw" / "trademarks.jsonl"
+OUT = Path(__file__).parent / "data" / "raw" / "trademarks.jsonl"
 OUT.parent.mkdir(parents=True, exist_ok=True)
 
 # === BRAND CATALOG ============================================================
@@ -102,7 +98,7 @@ BRANDS = {
     ],
 }
 
-# === FAMOUS TAGLINES (modeled on real EU trademark filings) ===================
+# === FAMOUS TAGLINES ==========================================================
 TAGLINES = {
     "Nike":         ["JUST DO IT", "AIR MAX", "FLYKNIT"],
     "Apple":        ["THINK DIFFERENT", "SHOT ON IPHONE"],
@@ -116,6 +112,11 @@ TAGLINES = {
     "Volkswagen":   ["DAS AUTO"],
     "Mercedes-Benz":["THE BEST OR NOTHING"],
     "Tesla":        ["ACCELERATING THE WORLD"],
+    "Samsung":      ["DO WHAT YOU CAN'T"],
+    "Amazon":       ["WORK HARD. HAVE FUN. MAKE HISTORY."],
+    "IKEA":         ["THE WONDERFUL EVERYDAY"],
+    "Lidl":         ["BIG ON QUALITY"],
+    "Red Bull":     ["GIVES YOU WINGS"],
 }
 
 # === VARIANT SUFFIXES BY NICE CLASS ===========================================
@@ -131,8 +132,7 @@ SUFFIXES = {
            "KIDS", "GO", "NOW", "LITE", "EDU", "ACADEMY"],
 }
 
-# === GOODS & SERVICES TEMPLATES (Nice classification verbiage) ===============
-# Templates exist for every class that can appear via cross_classes() below.
+# === GOODS & SERVICES TEMPLATES ===============================================
 GOODS = {
     "9": [
         "Computer software for {topic}; downloadable mobile applications for {topic}; cloud-based platforms for {topic}.",
@@ -224,7 +224,6 @@ GOODS = {
     ],
 }
 
-# === TOPIC POOLS for {topic}-bearing templates ===============================
 TOPICS = {
     "9":  ["productivity", "communication", "creative content", "data analytics",
            "cybersecurity", "artificial intelligence", "developer tools",
@@ -239,105 +238,364 @@ TOPICS = {
            "fitness and wellness", "personal finance", "digital marketing"],
 }
 
-# === REALISTIC OWNERS =========================================================
-# Specific brand → real owner mappings. Brands not listed get a random fallback.
+# === BRAND OWNERS — every brand mapped, no random fallbacks ==================
 BRAND_OWNERS = {
-    "Apple": "Apple Inc.", "Samsung": "Samsung Electronics Co. Ltd.",
-    "Sony": "Sony Group Corporation", "Microsoft": "Microsoft Corporation",
-    "Nintendo": "Nintendo Co. Ltd.", "Bose": "Bose Corporation",
-    "Dell": "Dell Inc.", "HP": "HP Inc.", "Lenovo": "Lenovo Group Limited",
-    "ASUS": "ASUSTeK Computer Inc.", "Logitech": "Logitech International S.A.",
-    "Garmin": "Garmin Ltd.", "Fitbit": "Fitbit LLC", "GoPro": "GoPro Inc.",
-    "DJI": "SZ DJI Technology Co. Ltd.", "Nokia": "Nokia Corporation",
-    "Xiaomi": "Xiaomi Communications Co. Ltd.", "Huawei": "Huawei Technologies Co. Ltd.",
-    "Philips": "Koninklijke Philips N.V.", "LG": "LG Electronics Inc.",
-    "Panasonic": "Panasonic Holdings Corporation", "Bosch": "Robert Bosch GmbH",
-    "Siemens": "Siemens AG", "Tesla": "Tesla Inc.", "BMW": "BMW AG",
-    "Audi": "AUDI AG", "Mercedes-Benz": "Mercedes-Benz Group AG",
-    "Volkswagen": "Volkswagen AG", "Renault": "Renault S.A.S.",
-    "Peugeot": "Automobiles Peugeot S.A.", "SAP": "SAP SE",
-    "Salesforce": "Salesforce Inc.", "Oracle": "Oracle Corporation",
-    "Adobe": "Adobe Inc.", "Spotify": "Spotify Technology S.A.",
-    "Shopify": "Shopify Inc.", "Stripe": "Stripe Payments Europe Ltd.",
-    "Klarna": "Klarna Bank AB", "Revolut": "Revolut Ltd.",
+    # Class 9 — Electronics & Tech
+    "Apple": "Apple Inc.",
+    "Samsung": "Samsung Electronics Co. Ltd.",
+    "Sony": "Sony Group Corporation",
+    "Microsoft": "Microsoft Corporation",
+    "Nintendo": "Nintendo Co. Ltd.",
+    "Bose": "Bose Corporation",
+    "Dell": "Dell Inc.",
+    "HP": "HP Inc.",
+    "Lenovo": "Lenovo Group Limited",
+    "ASUS": "ASUSTeK Computer Inc.",
+    "Acer": "Acer Inc.",
+    "Logitech": "Logitech International S.A.",
+    "Razer": "Razer Inc.",
+    "Garmin": "Garmin Ltd.",
+    "Fitbit": "Fitbit LLC",
+    "GoPro": "GoPro Inc.",
+    "DJI": "SZ DJI Technology Co. Ltd.",
+    "Nokia": "Nokia Corporation",
+    "Motorola": "Motorola Trademark Holdings LLC",
+    "Xiaomi": "Xiaomi Communications Co. Ltd.",
+    "Huawei": "Huawei Technologies Co. Ltd.",
+    "OnePlus": "OnePlus Technology (Shenzhen) Co. Ltd.",
+    "Philips": "Koninklijke Philips N.V.",
+    "LG": "LG Electronics Inc.",
+    "Panasonic": "Panasonic Holdings Corporation",
+    "JBL": "Harman International Industries Inc.",
+    "Sennheiser": "Sennheiser Electronic GmbH & Co. KG",
+    "Bang & Olufsen": "Bang & Olufsen A/S",
+    "Sonos": "Sonos Inc.",
+    "Anker": "Anker Innovations Limited",
+    "Belkin": "Belkin International Inc.",
+    "TP-Link": "TP-Link Technologies Co. Ltd.",
+    "Netgear": "Netgear Inc.",
+    "Cisco": "Cisco Technology Inc.",
+    "Intel": "Intel Corporation",
+    "AMD": "Advanced Micro Devices Inc.",
+    "Nvidia": "NVIDIA Corporation",
+    "Qualcomm": "Qualcomm Incorporated",
+    "Bosch": "Robert Bosch GmbH",
+    "Siemens": "Siemens AG",
+    "Schneider Electric": "Schneider Electric SE",
+    "ABB": "ABB Ltd.",
+    "Tesla": "Tesla Inc.",
+    "Polestar": "Polestar Automotive Sweden AB",
+    "Renault": "Renault S.A.S.",
+    "Peugeot": "Automobiles Peugeot S.A.",
+    "Volkswagen": "Volkswagen AG",
+    "BMW": "BMW AG",
+    "Audi": "AUDI AG",
+    "Mercedes-Benz": "Mercedes-Benz Group AG",
+    "SAP": "SAP SE",
+    "Salesforce": "Salesforce Inc.",
+    "Oracle": "Oracle Corporation",
+    "Adobe": "Adobe Inc.",
+    "Autodesk": "Autodesk Inc.",
+    "Spotify": "Spotify Technology S.A.",
+    "Shopify": "Shopify Inc.",
+    "Stripe": "Stripe Payments Europe Ltd.",
+    "Klarna": "Klarna Bank AB",
+    "Revolut": "Revolut Ltd.",
+    "N26": "N26 GmbH",
+    "Wise": "Wise Payments Limited",
+    "Booking": "Booking.com B.V.",
+    "Skyscanner": "Skyscanner Limited",
+    "TomTom": "TomTom International B.V.",
+    "Dyson": "Dyson Limited",
+    "Withings": "Withings S.A.",
+    "Nothing": "Nothing Technology Limited",
+    "Ring": "Ring LLC",
+    "Nest": "Google LLC",
+    "Roborock": "Beijing Roborock Technology Co. Ltd.",
+    "Ecovacs": "Ecovacs Robotics Co. Ltd.",
+    "Polar": "Polar Electro Oy",
+    "Suunto": "Suunto Oy",
+    "Roku": "Roku Inc.",
+    "Plantronics": "Plantronics Inc.",
+    "SteelSeries": "SteelSeries ApS",
+    "Corsair": "Corsair Gaming Inc.",
+    "MSI": "Micro-Star International Co. Ltd.",
+    "Gigabyte": "Giga-Byte Technology Co. Ltd.",
+    "Crucial": "Micron Consumer Products Group LLC",
+    "Western Digital": "Western Digital Technologies Inc.",
+    "Seagate": "Seagate Technology LLC",
+    "Kingston": "Kingston Technology Company Inc.",
+    "SanDisk": "Western Digital Technologies Inc.",
+    "EVGA": "EVGA Corporation",
+    "Noctua": "Noctua GmbH",
+    "Thermaltake": "Thermaltake Technology Co. Ltd.",
+    "Cooler Master": "Cooler Master Co. Ltd.",
+    "Fractal Design": "Fractal Design AB",
 
-    "Nike": "Nike Inc.", "Adidas": "Adidas AG", "Puma": "Puma SE",
-    "Zara": "Industria de Diseño Textil S.A.", "H&M": "H & M Hennes & Mauritz AB",
-    "Mango": "Punto Fa S.L.", "Lacoste": "Lacoste S.A.S.",
-    "Hugo Boss": "Hugo Boss AG", "Tommy Hilfiger": "Tommy Hilfiger Licensing LLC",
-    "Calvin Klein": "Calvin Klein Trademark Trust", "Levi's": "Levi Strauss & Co.",
-    "Diesel": "Diesel S.p.A.", "Gucci": "Guccio Gucci S.p.A.",
-    "Prada": "Prada S.A.", "Burberry": "Burberry Limited",
-    "Versace": "Gianni Versace S.r.l.", "Armani": "Giorgio Armani S.p.A.",
-    "Hermès": "Hermès International", "Chanel": "Chanel SARL",
-    "Balenciaga": "Balenciaga S.A.", "Reebok": "Reebok International Limited",
-    "New Balance": "New Balance Athletics Inc.", "ASICS": "ASICS Corporation",
-    "Under Armour": "Under Armour Inc.", "The North Face": "The North Face Apparel Corp.",
-    "Patagonia": "Patagonia Inc.", "Vans": "VF Outdoor LLC",
-    "Converse": "Converse Inc.", "Dr. Martens": "Dr. Martens AirWair Limited",
+    # Class 25 — Fashion & Apparel
+    "Nike": "Nike Inc.",
+    "Adidas": "Adidas AG",
+    "Puma": "Puma SE",
+    "Zara": "Industria de Diseño Textil S.A.",
+    "H&M": "H & M Hennes & Mauritz AB",
+    "Mango": "Punto Fa S.L.",
+    "Lacoste": "Lacoste S.A.S.",
+    "Hugo Boss": "Hugo Boss AG",
+    "Tommy Hilfiger": "Tommy Hilfiger Licensing LLC",
+    "Calvin Klein": "Calvin Klein Trademark Trust",
+    "Levi's": "Levi Strauss & Co.",
+    "Diesel": "Diesel S.p.A.",
+    "Gucci": "Guccio Gucci S.p.A.",
+    "Prada": "Prada S.A.",
+    "Burberry": "Burberry Limited",
+    "Versace": "Gianni Versace S.r.l.",
+    "Dolce & Gabbana": "Gado S.r.l.",
+    "Armani": "Giorgio Armani S.p.A.",
+    "Fendi": "Fendi S.r.l.",
+    "Valentino": "Valentino S.p.A.",
+    "Saint Laurent": "Saint Laurent SAS",
+    "Chanel": "Chanel SARL",
+    "Hermès": "Hermès International",
+    "Loewe": "Loewe S.A.",
+    "Balenciaga": "Balenciaga S.A.",
+    "Bottega Veneta": "Bottega Veneta S.r.l.",
+    "Givenchy": "Givenchy S.A.",
+    "Kenzo": "Kenzo S.A.S.",
+    "Stone Island": "Stone Island S.p.A.",
+    "Moncler": "Moncler S.p.A.",
+    "Canada Goose": "Canada Goose Inc.",
+    "The North Face": "The North Face Apparel Corp.",
+    "Patagonia": "Patagonia Inc.",
+    "Columbia": "Columbia Sportswear Company",
+    "Salomon": "Salomon S.A.S.",
+    "Arc'teryx": "Arc'teryx Equipment Inc.",
+    "Mammut": "Mammut Sports Group AG",
+    "Jack Wolfskin": "Jack Wolfskin GmbH & Co. KGaA",
+    "Helly Hansen": "Helly Hansen AS",
+    "Reebok": "Reebok International Limited",
+    "New Balance": "New Balance Athletics Inc.",
+    "ASICS": "ASICS Corporation",
+    "Mizuno": "Mizuno Corporation",
+    "Under Armour": "Under Armour Inc.",
+    "Champion": "Hanesbrands Inc.",
+    "Fila": "FILA Holdings Corp.",
+    "Kappa": "BasicNet S.p.A.",
+    "Umbro": "Umbro International Limited",
+    "Lotto": "Lotto Sport Italia S.p.A.",
+    "Diadora": "Diadora S.r.l.",
+    "Vans": "VF Outdoor LLC",
+    "Converse": "Converse Inc.",
+    "Timberland": "The Timberland Company",
+    "Dr. Martens": "Dr. Martens AirWair Limited",
+    "Birkenstock": "Birkenstock IP GmbH & Co. KG",
+    "Crocs": "Crocs Inc.",
+    "ECCO": "ECCO Sko A/S",
+    "Geox": "Geox S.p.A.",
+    "Camper": "Camper S.L.",
+    "Pikolinos": "Calzados Pikolinos S.A.",
     "Massimo Dutti": "Industria de Diseño Textil S.A.",
     "Pull&Bear": "Industria de Diseño Textil S.A.",
     "Bershka": "Industria de Diseño Textil S.A.",
     "Stradivarius": "Industria de Diseño Textil S.A.",
+    "Oysho": "Industria de Diseño Textil S.A.",
+    "Desigual": "Desigual S.A.",
+    "Bimba y Lola": "Bimba y Lola S.L.",
+    "Custo Barcelona": "Custo Barcelona S.L.",
+    "Adolfo Domínguez": "Adolfo Domínguez S.A.",
+    "Scalpers": "Scalpers Company S.L.",
+    "Carolina Herrera": "Carolina Herrera Ltd.",
+    "Manolo Blahnik": "Manolo Blahnik International Limited",
+    "Pronovias": "Pronovias Fashion Group S.L.",
+    "Cortefiel": "Tendam Brands S.A.",
+    "Springfield": "Tendam Brands S.A.",
+    "Suit Supply": "Suitsupply B.V.",
+    "Brunello Cucinelli": "Brunello Cucinelli S.p.A.",
+    "Loro Piana": "Loro Piana S.p.A.",
+    "Tod's": "Tod's S.p.A.",
+    "Salvatore Ferragamo": "Salvatore Ferragamo S.p.A.",
+    "Bally": "Bally International AG",
+    "A.P.C.": "A.P.C. S.A.S.",
+    "Acne Studios": "Acne Studios AB",
+    "COS": "H & M Hennes & Mauritz AB",
+    "Arket": "H & M Hennes & Mauritz AB",
+    "& Other Stories": "H & M Hennes & Mauritz AB",
+    "Weekday": "H & M Hennes & Mauritz AB",
+    "Monki": "H & M Hennes & Mauritz AB",
 
-    "Amazon": "Amazon Europe Core S.à r.l.", "eBay": "eBay Inc.",
-    "Alibaba": "Alibaba Group Holding Limited", "Carrefour": "Carrefour S.A.",
-    "Tesco": "Tesco PLC", "Lidl": "Lidl Stiftung & Co. KG", "Aldi": "Aldi GmbH & Co. KG",
-    "Mercadona": "Mercadona S.A.", "IKEA": "Inter IKEA Systems B.V.",
-    "Decathlon": "Decathlon S.A.S.", "El Corte Inglés": "El Corte Inglés S.A.",
-    "Primark": "Primark Holdings", "Marks & Spencer": "Marks and Spencer plc",
-    "McKinsey": "McKinsey & Company Inc.", "Deloitte": "Deloitte Touche Tohmatsu Limited",
-    "PwC": "PricewaterhouseCoopers International Limited", "KPMG": "KPMG International Limited",
-    "EY": "Ernst & Young Global Limited", "Accenture": "Accenture Global Services Limited",
-    "Capgemini": "Capgemini SE", "Glovo": "Glovoapp23 S.L.",
-    "Cabify": "Maxi Mobility Spain S.L.", "Bolt": "Bolt Operations OÜ",
-    "Uber": "Uber Technologies Inc.", "Wallapop": "Wallapop S.L.",
-    "Vinted": "Vinted UAB", "Idealista": "Idealista S.A.",
-    "Just Eat": "Just Eat Holding Limited", "Deliveroo": "Roofoods Limited",
-    "Booking.com": "Booking.com B.V.", "Expedia": "Expedia Group Inc.",
-    "Airbnb": "Airbnb Ireland UC", "Etsy": "Etsy Inc.",
-    "ASOS": "ASOS PLC", "Zalando": "Zalando SE",
+    # Class 35 — Retail & Services
+    "Amazon": "Amazon Europe Core S.à r.l.",
+    "eBay": "eBay Inc.",
+    "Alibaba": "Alibaba Group Holding Limited",
+    "Walmart": "Walmart Inc.",
+    "Carrefour": "Carrefour S.A.",
+    "Tesco": "Tesco PLC",
+    "Lidl": "Lidl Stiftung & Co. KG",
+    "Aldi": "Aldi GmbH & Co. KG",
+    "Mercadona": "Mercadona S.A.",
+    "Eroski": "Eroski S. Coop.",
+    "DIA": "Distribuidora Internacional de Alimentación S.A.",
+    "Auchan": "Auchan Retail International S.A.",
+    "Casino": "Casino Guichard-Perrachon S.A.",
+    "IKEA": "Inter IKEA Systems B.V.",
+    "Leroy Merlin": "ADEO S.A.",
+    "Decathlon": "Decathlon S.A.S.",
+    "Fnac": "Fnac Darty S.A.",
+    "MediaMarkt": "Ceconomy AG",
+    "Saturn": "Ceconomy AG",
+    "El Corte Inglés": "El Corte Inglés S.A.",
+    "Galeries Lafayette": "Galeries Lafayette S.A.",
+    "Harrods": "Harrods Limited",
+    "Selfridges": "Selfridges Group Limited",
+    "John Lewis": "John Lewis Partnership plc",
+    "Marks & Spencer": "Marks and Spencer plc",
+    "Primark": "Primark Holdings",
+    "Costco": "Costco Wholesale Corporation",
+    "Target": "Target Corporation",
+    "Macy's": "Macy's Inc.",
+    "Nordstrom": "Nordstrom Inc.",
+    "TJ Maxx": "TJX Companies Inc.",
+    "McKinsey": "McKinsey & Company Inc.",
+    "BCG": "The Boston Consulting Group Inc.",
+    "Bain": "Bain & Company Inc.",
+    "Deloitte": "Deloitte Touche Tohmatsu Limited",
+    "PwC": "PricewaterhouseCoopers International Limited",
+    "KPMG": "KPMG International Limited",
+    "EY": "Ernst & Young Global Limited",
+    "Accenture": "Accenture Global Services Limited",
+    "Capgemini": "Capgemini SE",
+    "Atos": "Atos SE",
+    "Indra": "Indra Sistemas S.A.",
+    "NTT Data": "NTT Data Corporation",
+    "Cognizant": "Cognizant Technology Solutions Corporation",
+    "Infosys": "Infosys Limited",
+    "TCS": "Tata Consultancy Services Limited",
+    "Wipro": "Wipro Limited",
+    "HCL": "HCL Technologies Limited",
+    "Glovo": "Glovoapp23 S.L.",
+    "Cabify": "Maxi Mobility Spain S.L.",
+    "Bolt": "Bolt Operations OÜ",
+    "Free Now": "Free Now GmbH",
+    "Uber": "Uber Technologies Inc.",
+    "Wallapop": "Wallapop S.L.",
+    "Vinted": "Vinted UAB",
+    "Idealista": "Idealista S.A.",
+    "Fotocasa": "Adevinta Spain S.L.",
+    "Just Eat": "Just Eat Holding Limited",
+    "Deliveroo": "Roofoods Limited",
+    "Uber Eats": "Uber Technologies Inc.",
+    "Wolt": "Wolt Enterprises Oy",
+    "DoorDash": "DoorDash Inc.",
+    "Booking.com": "Booking.com B.V.",
+    "Expedia": "Expedia Group Inc.",
+    "Airbnb": "Airbnb Ireland UC",
+    "Vrbo": "Expedia Group Inc.",
+    "Trivago": "Trivago N.V.",
+    "Kayak": "Kayak Software Corporation",
+    "eDreams": "eDreams ODIGEO S.A.",
+    "Kiwi.com": "Kiwi.com s.r.o.",
+    "Hotels.com": "Hotels.com GP LLC",
+    "Trip.com": "Trip.com Travel Singapore Pte. Ltd.",
+    "Agoda": "Agoda Company Pte. Ltd.",
+    "Etsy": "Etsy Inc.",
+    "ASOS": "ASOS PLC",
+    "Zalando": "Zalando SE",
+    "Boohoo": "boohoo Group plc",
+    "Shein": "Zoetop Business Co. Limited",
+    "Temu": "PDD Holdings Inc.",
+    "Veepee": "Veepee S.A.S.",
+    "Privalia": "Privalia Venta Directa S.A.",
+    "AliExpress": "Alibaba Group Holding Limited",
+    "JD.com": "JD.com Inc.",
+    "Rakuten": "Rakuten Group Inc.",
+    "Mercado Libre": "Mercadolibre S.R.L.",
 
-    "Netflix": "Netflix International B.V.", "Disney+": "Disney Enterprises Inc.",
-    "HBO Max": "Home Box Office Inc.", "Apple TV+": "Apple Inc.",
-    "Spotify": "Spotify Technology S.A.", "Apple Music": "Apple Inc.",
-    "YouTube": "Google LLC", "TikTok": "TikTok Information Technologies UK Limited",
-    "Twitch": "Twitch Interactive Inc.", "Audible": "Audible Inc.",
-    "Coursera": "Coursera Inc.", "Udemy": "Udemy Inc.",
-    "Duolingo": "Duolingo Inc.", "Babbel": "Lesson Nine GmbH",
+    # Class 41 — Entertainment & Education
+    "Netflix": "Netflix International B.V.",
+    "Disney+": "Disney Enterprises Inc.",
+    "HBO Max": "Home Box Office Inc.",
+    "Amazon Prime Video": "Amazon.com Inc.",
+    "Apple TV+": "Apple Inc.",
+    "Paramount+": "Paramount Global",
+    "Peacock": "NBCUniversal Media LLC",
+    "Hulu": "Hulu LLC",
+    "Apple Music": "Apple Inc.",
+    "YouTube Music": "Google LLC",
+    "Tidal": "Aspiro AB",
+    "Deezer": "Deezer S.A.",
+    "SoundCloud": "SoundCloud Limited",
+    "Audible": "Audible Inc.",
+    "Storytel": "Storytel AB",
+    "Scribd": "Scribd Inc.",
+    "YouTube": "Google LLC",
+    "TikTok": "TikTok Information Technologies UK Limited",
+    "Twitch": "Twitch Interactive Inc.",
+    "Vimeo": "Vimeo Inc.",
+    "Patreon": "Patreon Inc.",
+    "Substack": "Substack Inc.",
+    "Coursera": "Coursera Inc.",
+    "Udemy": "Udemy Inc.",
+    "edX": "edX LLC",
+    "Khan Academy": "Khan Academy Inc.",
+    "Skillshare": "Skillshare Inc.",
+    "MasterClass": "MasterClass Inc.",
+    "Pluralsight": "Pluralsight LLC",
+    "DataCamp": "DataCamp Inc.",
+    "Codecademy": "Ryzac Inc.",
+    "Duolingo": "Duolingo Inc.",
+    "Babbel": "Lesson Nine GmbH",
+    "Busuu": "Busuu Limited",
+    "Rosetta Stone": "Rosetta Stone Ltd.",
+    "Berlitz": "Berlitz Languages Inc.",
     "Cambridge English": "University of Cambridge",
     "British Council": "The British Council",
     "Goethe-Institut": "Goethe-Institut e.V.",
     "Cervantes": "Instituto Cervantes",
-    "IE Business School": "IE University", "ESADE": "Fundación ESADE",
+    "Alliance Française": "Alliance Française",
+    "IE Business School": "IE University",
+    "ESADE": "Fundación ESADE",
     "IESE": "IESE Business School",
+    "London Business School": "London Business School",
+    "INSEAD": "INSEAD",
+    "HEC Paris": "HEC Paris",
+    "Bocconi": "Università Commerciale Luigi Bocconi",
     "Real Madrid": "Real Madrid Club de Fútbol",
     "FC Barcelona": "Futbol Club Barcelona",
     "Atlético Madrid": "Club Atlético de Madrid S.A.D.",
+    "Sevilla FC": "Sevilla Fútbol Club S.A.D.",
+    "Valencia CF": "Valencia Club de Fútbol S.A.D.",
+    "Athletic Bilbao": "Athletic Club",
+    "Real Sociedad": "Real Sociedad de Fútbol S.A.D.",
+    "Real Betis": "Real Betis Balompié S.A.D.",
     "Manchester United": "Manchester United Football Club Limited",
+    "Manchester City": "Manchester City Football Club Limited",
     "Liverpool": "The Liverpool Football Club and Athletic Grounds Limited",
+    "Arsenal": "Arsenal Football Club plc",
+    "Chelsea": "Chelsea FC plc",
+    "Tottenham": "Tottenham Hotspur Football Club Limited",
     "Bayern Munich": "FC Bayern München AG",
+    "Borussia Dortmund": "Borussia Dortmund GmbH & Co. KGaA",
     "Juventus": "Juventus Football Club S.p.A.",
     "AC Milan": "AC Milan S.p.A.",
+    "Inter Milan": "Football Club Internazionale Milano S.p.A.",
+    "Roma": "AS Roma S.p.A.",
+    "Napoli": "Società Sportiva Calcio Napoli S.p.A.",
     "Paris Saint-Germain": "Paris Saint-Germain Football",
     "UEFA": "Union des Associations Européennes de Football",
     "FIFA": "Fédération Internationale de Football Association",
     "Formula 1": "Formula One Licensing B.V.",
+    "MotoGP": "Dorna Sports S.L.",
+    "NBA": "NBA Properties Inc.",
+    "NFL": "NFL Properties LLC",
+    "Premier League": "The Football Association Premier League Limited",
+    "La Liga": "Liga Nacional de Fútbol Profesional",
+    "Cinemark": "Cinemark Holdings Inc.",
+    "AMC Theatres": "AMC Entertainment Holdings Inc.",
+    "Cineworld": "Cineworld Group plc",
+    "Pathé": "Pathé Films S.A.",
+    "UCI Cinemas": "UCI Cinemas International S.r.l.",
 }
 
-# Generic owner pool used when a brand isn't in BRAND_OWNERS.
-GENERIC_OWNERS = [
-    "Telefónica S.A.", "Banco Santander S.A.", "BBVA S.A.",
-    "Iberia Líneas Aéreas S.A.", "Repsol S.A.", "Iberdrola S.A.",
-    "ACS Actividades de Construcción S.A.", "Ferrovial S.A.",
-    "LVMH Moët Hennessy Louis Vuitton SE", "Kering S.A.",
-    "Stellantis N.V.", "Heineken N.V.", "Anheuser-Busch InBev SA/NV",
-    "Pernod Ricard S.A.", "Nestlé S.A.", "Unilever PLC", "L'Oréal S.A.",
-    "Henkel AG & Co. KGaA",
-]
-
 # === CROSS-CLASS RELATIONSHIPS ================================================
-# A primary class often appears alongside these related classes in real filings.
 RELATED_CLASSES = {
     "9":  ["9", "35", "38", "42", "45"],
     "25": ["25", "18", "28", "35"],
@@ -345,7 +603,6 @@ RELATED_CLASSES = {
     "41": ["41", "9", "16", "38", "42"],
 }
 
-OUT_PATH = OUT  # alias for clarity in main
 
 # === HELPERS ==================================================================
 def random_date(start_year: int = 2018, end_year: int = 2025) -> str:
@@ -353,8 +610,8 @@ def random_date(start_year: int = 2018, end_year: int = 2025) -> str:
     end = date(end_year, 12, 31)
     return (start + timedelta(days=random.randint(0, (end - start).days))).isoformat()
 
+
 def make_goods(primary_class: str) -> str:
-    """Pick a Nice-class-appropriate goods/services template, filling {topic} if present."""
     templates = GOODS.get(primary_class, [
         f"Various goods and services in international class {primary_class}."
     ])
@@ -364,41 +621,44 @@ def make_goods(primary_class: str) -> str:
         return template.format(topic=random.choice(topics))
     return template
 
+
 def cross_classes(primary: str) -> list:
-    """Realistic class spread — owners typically file across multiple Nice classes."""
     base = RELATED_CLASSES[primary]
     n_extra = random.randint(0, min(3, len(base) - 1))
     extras = random.sample([c for c in base if c != primary], k=n_extra)
     return sorted(set([primary] + extras))
 
+
 def variants_for(brand: str, primary_class: str):
-    """Yield 5-15 mark-name variants per brand, mirroring real portfolios."""
     seen = set()
+
     def add(v):
         if v not in seen:
             seen.add(v)
             return v
         return None
 
-    # 1. Base mark — always present
     if (b := add(brand)): yield b
-    # 2. Famous taglines for marquee brands
     for tag in TAGLINES.get(brand, []):
         if (b := add(tag)): yield b
-    # 3. Sub-brand suffixes (6-12 of them, sampled from the class pool)
     pool = SUFFIXES[primary_class]
     n = random.randint(6, 12)
     for suffix in random.sample(pool, k=min(n, len(pool))):
         if (b := add(f"{brand} {suffix}")): yield b
-    # 4. Stylized variants (uppercase / lowercase) — sometimes
     if random.random() < 0.25:
         if (b := add(brand.upper())): yield b
     if random.random() < 0.15:
         if (b := add(brand.lower())): yield b
-    # 5. Anniversary marks — occasional
     if random.random() < 0.10:
         year = random.choice([25, 50, 75, 100])
         if (b := add(f"{brand} {year}")): yield b
+
+
+def euipo_url(mark_text: str) -> str:
+    """Link to a real EUIPO eSearch page for this mark name."""
+    encoded = urllib.parse.quote(mark_text)
+    return f"https://euipo.europa.eu/eSearch/#basic/1+1+1+1/{encoded}"
+
 
 def make_record(mark: str, primary_class: str, owner: str, idx: int) -> dict:
     classes = cross_classes(primary_class)
@@ -407,7 +667,6 @@ def make_record(mark: str, primary_class: str, owner: str, idx: int) -> dict:
         ["Registered", "Pending", "Refused", "Withdrawn", "Expired"],
         weights=[70, 15, 8, 5, 2],
     )[0]
-    # Registration always follows application — typically 4-18 months later.
     registration_date = None
     if status in ("Registered", "Expired"):
         registration_date = (
@@ -427,17 +686,18 @@ def make_record(mark: str, primary_class: str, owner: str, idx: int) -> dict:
         "status": status,
         "niceClasses": classes,
         "goodsAndServices": " ".join(make_goods(c) for c in classes),
+        "sourceUrl": euipo_url(mark),
     }
+
 
 def main():
     written = 0
     seen = set()
     idx = 0
-    with OUT_PATH.open("w", encoding="utf-8") as f:
+    with OUT.open("w", encoding="utf-8") as f:
         for nice_class, brands in BRANDS.items():
             for brand in brands:
-                # Stable owner per brand — real owner if known, else random fallback
-                owner = BRAND_OWNERS.get(brand) or random.choice(GENERIC_OWNERS)
+                owner = BRAND_OWNERS[brand]  # always correct — no fallback
                 for variant in variants_for(brand, nice_class):
                     key = (variant, nice_class)
                     if key in seen:
@@ -447,7 +707,8 @@ def main():
                     f.write(json.dumps(record, ensure_ascii=False) + "\n")
                     written += 1
                     idx += 1
-    print(f"Done. {written} records → {OUT_PATH}")
+    print(f"Done. {written} records → {OUT}")
+
 
 if __name__ == "__main__":
     main()

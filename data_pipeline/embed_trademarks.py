@@ -1,4 +1,4 @@
-import os
+import os, time
 from supabase import create_client
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -11,7 +11,7 @@ def build_text(row):
     classes = ", ".join(str(c) for c in (row.get("nice_classes") or []))
     return f"{row['mark_text']} | classes {classes} | {row.get('goods_services') or ''}"[:8000]
 
-PAGE = 200
+PAGE = 100
 offset = 0
 while True:
     rows = (sb.table("trademarks")
@@ -27,3 +27,4 @@ while True:
         sb.table("trademarks").update({"embedding": e.embedding}).eq("id", r["id"]).execute()
     print(f"embedded {offset}..{offset+len(rows)}")
     offset += PAGE
+    time.sleep(1)

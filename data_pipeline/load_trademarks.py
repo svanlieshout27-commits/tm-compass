@@ -17,6 +17,7 @@ def normalize(tm):
         "status": tm.get("status"),
         "nice_classes": tm.get("niceClasses", []),
         "goods_services": tm.get("goodsAndServices"),
+        "source_url": tm.get("sourceUrl") or "",
     }
 
 batch = []
