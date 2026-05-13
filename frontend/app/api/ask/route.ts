@@ -1,11 +1,8 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+export const dynamic = "force-dynamic";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
-
-const sb = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!);
-const oai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 function extractKeywords(query: string): string {
   const stopWords = new Set([
@@ -29,6 +26,10 @@ function extractKeywords(query: string): string {
 
 export async function POST(req: NextRequest) {
   try {
+    const sb = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!);
+    const oai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
     const { query } = await req.json();
 
     const emb = await oai.embeddings.create({
@@ -44,7 +45,9 @@ export async function POST(req: NextRequest) {
       match_count: 8,
     });
 
-    console.log("RPC:", JSON.stringify(rpcError), "hits:", hits?.length); const sources = (hits || []).map((h: any, i: number) => ({
+    if (rpcError) console.error("RPC Error:", rpcError);
+
+    const sources = (hits || []).map((h: any, i: number) => ({
       n: i + 1,
       ...h,
     }));
